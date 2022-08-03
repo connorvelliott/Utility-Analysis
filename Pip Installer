@@ -1,0 +1,3 @@
+#pip installs. Run this First!
+!pip install XlsxWriter #automatically pip installs xlsxwriter for you which is used for writing to excel
+!pip install tika #automatically installs tika for reading pdfs
