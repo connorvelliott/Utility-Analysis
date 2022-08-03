@@ -1,0 +1,1321 @@
+'''This code reads in a .txt file with the kW, kWh, Energy Charges, and Demand Charges
+for each site analyzed and will produce an Excel file with summaries of all the calculations, 
+along with the tables put in the report. The ReadMe file is in the folder Utility Analysis Program 
+found in Project Resources under Shares will explain what information to put in 
+and how to put it inside the .txt. Furthermore, there are example inputs and outputs 
+in that folder, along with a .txt version of the original code.
+Ensure that you update the rate schedule information (per the ReadMe) before running this code!!!'''
+
+#---------------------------------------------Utility Analysis Code-----------------------------------------------------
+import xlsxwriter
+
+#-------------------------------------------- Function that Performs the Calculations---------------------------------------------------
+def start(rate, kWh, kW, echarge, dcharge, mb, offecharge = 0, excessdcharge = 0, offkWh = 0, excesskW = 0): #runs the analysis
+  Totallist = [] #list of all sites total charge
+  Total0list = [] #list of all sites total charge at 0 kWh
+  Totaldemlist = [] #list of all sites total charge with only kW
+  perror = []
+  Monthlydemlist = [] #list of all sites monthly charge with only kW
+  Monthlytotallist = [] #list of all sites monthly total charges
+  AEnergylist = [] #list of all sites annual energy
+  dpkWh = [] #list of all sites $/kWh
+  consumption_dpkWh = [] #list of all sites consumption $/kWh
+  consumption_cost = [] #list of all sites calculated consumption cost
+  for i in range(len(rate)): #runs through all sites
+    Monthlydemlist.append([]) #append list to create list of lists the size of the ammount of sites
+    Monthlytotallist.append([]) #append list to create list of lists the size of the ammount of sites
+    #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    if utility == 'Entergy':
+      #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+      if rate[i] == 'AR_SG1': #calculations for SG1 sites
+        #============================================================================================================================================================
+        ccharge = 24.25 #customer charge (UPDATE IF NEEDED)
+        kWhprice_noriders = .05637 #kWh price (1st 150 plus 900*(kW-6)) without riders for FRP, TA, and IRC (what is found on rate schedule) (UPDATE IF NEEDED)
+        additkWhprice_noriders = .03972 #additional kWh price without riders for FRP, TA, and IRC (what is found on rate schedule) (UPDATE IF NEEDED)
+        FRPprice = .223217 #July 2022 FRP Price (UPDATE IF NEEDED)
+        TAprice = 0 #July 2022 Tax Adjustment Price (UPDATE IF NEEDED)
+        IRCprice = -.005437 #July 2022 IRC Price (UPDATE IF NEEDED)
+        Fuelprice = .00959 #July 2022 FUEL Price (UPDATE IF NEEDED)
+        FERCprice = .00026 #July 2022 FERC Price (UPDATE IF NEEDED)
+        Taxprice= .1 #Pine Bluff Tax Rate (UPDATE TO YOUR LOCATION)
+        #============================================================================================================================================================
+        Total = 0 #resets for each site
+        Total0 = 0 #resets for each site (0kWh)
+        Totaldem = 0 #resets for each site (only kW)
+        ActTotal = 0
+        AEnergy = 0 #resets for each site
+        for j in range(len(kWh[i])): #runs through one site
+          checker = 900+150*(kW[i][j]-6) #calculates the checker for if all kWh's are covered by initial price (see SGS Rate Schedule)
+          if mb[i][j] == 'Y': #if that month is a minimum bill charge then only the riders are used for energy charge, but riders are not charged for FRP, IRC, or TA on SGS
+            FRP = (ccharge + dcharge[i][j])*FRPprice #calculates FRP if it is a MB
+            IRC = (ccharge + dcharge[i][j])*IRCprice #calculates IRC if it is a MB
+            TA = (ccharge + dcharge[i][j])*TAprice #calculates TA if it is a MB
+          elif checker > kWh[i][j]: #checks if all kWh are covered by inital kWh price
+            FRP = (ccharge + dcharge[i][j] + kWh[i][j]*kWhprice_noriders)*FRPprice #calculates FRP if all kWh covered by initial kWh price
+            IRC = (ccharge + dcharge[i][j] + kWh[i][j]*kWhprice_noriders)*IRCprice #calculates IRC if all kWh covered by initial kWh price
+            TA = (ccharge + dcharge[i][j] + kWh[i][j]*kWhprice_noriders)*TAprice #calculates TA if all kWh covered by initial kWh price
+          else: #if not all kWh are covered by initial kWh price
+            FRP = (ccharge + dcharge[i][j] + checker*kWhprice_noriders + (kWh[i][j]-checker)*additkWhprice_noriders)*FRPprice #calculates FRP if not all kWh covered by initial kWh price
+            IRC = (ccharge + dcharge[i][j] + checker*kWhprice_noriders + (kWh[i][j]-checker)*additkWhprice_noriders)*IRCprice #calculates IRC if not all kWh covered by initial kWh price
+            TA = (ccharge + dcharge[i][j] + checker*kWhprice_noriders + (kWh[i][j]-checker)*additkWhprice_noriders)*TAprice #calculates TA if not all kWh covered by initial kWh price
+          FRP0 = (ccharge + dcharge[i][j])*FRPprice #Calculates FRP at 0 kWh
+          IRC0 = (ccharge + dcharge[i][j])*IRCprice #Calculates IRC at 0 kWh
+          TA0 = (ccharge + dcharge[i][j])*IRCprice #Calculates TA at 0 kWh
+          FRPdem = dcharge[i][j]*FRPprice #Calculates FRP with only kW
+          IRCdem = dcharge[i][j]*IRCprice #Calculates IRC with only kW
+          TAdem = dcharge[i][j]*TAprice #Calculates TA with only kW
+          Fuel = kWh[i][j]*Fuelprice #Calculates Fuel Cost
+          FERC = kWh[i][j]*FERCprice #Calculates FERC
+          Tax = (FERC+Fuel+IRC+FRP+TA+dcharge[i][j]+echarge[i][j]+ccharge)*Taxprice #Calculates Tax
+          Tax0 = (IRC0+FRP0+TA0+dcharge[i][j]+ccharge)*Taxprice #Calculates Tax at 0 kWh
+          Taxdem = (FRPdem+IRCdem+TAdem+dcharge[i][j])*Taxprice #Calculates Tax with only kW
+          Total += FERC+Fuel+IRC+FRP+TA+dcharge[i][j]+echarge[i][j]+ccharge+Tax #iteratedly adds the totals for each month
+          Total0 += IRC0+FRP0+TA0+dcharge[i][j]+ccharge+Tax0 #iteratedly adds the totals at 0 kWh for each month
+          Totaldem += FRPdem+IRCdem+TAdem+dcharge[i][j]+Taxdem #kW only total for demand summary
+          MTotal = FERC+Fuel+IRC+FRP+TA+dcharge[i][j]+echarge[i][j]+ccharge+Tax #monthly total for demand summary
+          Mdem = FRPdem+IRCdem+TAdem+dcharge[i][j]+Taxdem #monthly kW only for demand summary
+          Monthlydemlist[i].append(round(Mdem,2)) #append monthly kW only
+          Monthlytotallist[i].append(round(MTotal,2)) #append monthly total
+          AEnergy += kWh[i][j] #iteratedly adds the energy for each month
+          ActTotal += float(amcharge[i][j])
+        Totallist.append(round(Total,2)) #appends total for that site
+        Total0list.append(round(Total0,2)) #appends total at 0 kWh for that site
+        Totaldemlist.append(round(Totaldem,2)) #appends total with only kW for that site
+        AEnergylist.append(int(AEnergy)) #appends annual energy for that site
+        dpkWh.append(round(Total/AEnergy,4)) #appends $/kWh for that site
+        consumption_dpkWh.append(round((Total-Total0)/AEnergy,4)) #appends consumption $/kWh for that site
+        consumption_cost.append(round(consumption_dpkWh[i]*AEnergy,2)) #appends calculated consumption cost for that site
+        perror.append((ActTotal - Total) / ActTotal)
+      #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+      elif rate[i] == 'AR_PT1': #calculations for PT1 sites
+        #============================================================================================================================================================
+        ccharge = 468.60 #customer charge (UPDATE IF NEEDED)
+        FRPprice = .2385444 #July 2022 FRP Price (UPDATE IF NEEDED)
+        IRCprice = -.004601 #July 2022 IRC Price (UPDATE IF NEEDED)
+        TAprice = 0 #July 2022 Tax Adjustment Price (UPDATE IF NEEDED)
+        Fuelprice = .00959 #July 2022 Fuel Price (UPDATE IF NEEDED)
+        FERCprice = .00011 #July 2022 FERC Price (UPDATE IF NEEDED)
+        Taxprice = .1 #Pine Bluff Tax Rate (UPDATE TO YOUR LOCATION)
+        MISOprice = -1.94 #July 2022 MISO Rider Price (UPDATE IF NEEDED)
+        CCRprice = .003953 #July 2022 CCR Rider Price (UPDATE IF NEEDED)
+        M33price = 1.66 #July 2022 M33 Rider Price (UPDATE IF NEEDED)
+        EEPprice = .00347 #July 2022 EEP Rider Price (UPDATE IF NEEDED)
+        FLFprice = .00006 #July 2022 FLF Rider Price (UPDATE IF NEEDED)
+        MFAprice = .0425 #Pine Bluff MFA Price (UPDATE TO YOUR LOCATION)
+        #============================================================================================================================================================
+        Total = 0 #resets for each site
+        Total0 = 0 #resets for each site
+        Totaldem = 0 #resets for each site
+        ActTotal = 0
+        AEnergy = 0 #resets for each site
+        for j in range(len(kWh[i])): #runs through one site
+          if mb[i][j] == 'Y': #if that month is a minimum bill charge then only the riders are used for energy charge, but riders are not charged for FRP, IRC, or TA on SGS
+            FRP = (ccharge + dcharge[i][j] + excessdcharge[i][j])*FRPprice #calcualtes FRP
+            IRC = (ccharge + dcharge[i][j] + excessdcharge[i][j])*IRCprice #calculates IRC
+            TA = (ccharge + dcharge[i][j] + excessdcharge[i][j])*TAprice #calculates TA
+          else: #not a minimum bill
+            FRP = (ccharge + dcharge[i][j] + echarge[i][j] + excessdcharge[i][j] + offecharge[i][j])*FRPprice #calculates FRP
+            IRC = (ccharge + dcharge[i][j] + echarge[i][j] + excessdcharge[i][j] + offecharge[i][j])*IRCprice #Calculates IRC
+            TA = (ccharge + dcharge[i][j] + echarge[i][j] + excessdcharge[i][j] + offecharge[i][j])*TAprice #Calculates TA
+          FRP0 = (ccharge + dcharge[i][j] + excessdcharge[i][j])*FRPprice #calculates FRP at 0 kWh
+          IRC0 = (ccharge + dcharge[i][j] + excessdcharge[i][j])*IRCprice #calculates IRC at 0 kWh
+          TA0 = (ccharge + dcharge[i][j] + excessdcharge[i][j])*TAprice #calculates TA at 0 kWh
+          FRPdem = (dcharge[i][j]+excessdcharge[i][j])*FRPprice #calculates FRP with only kW
+          IRCdem = (dcharge[i][j]+excessdcharge[i][j])*IRCprice #calculates IRC with only kW
+          TAdem = (dcharge[i][j]+excessdcharge[i][j])*TAprice #calculates TA with only kW
+          MISO = (kW[i][j]+excesskW[i][j])*MISOprice #calculates MISO
+          CCR = (kW[i][j]+excesskW[i][j])*CCRprice #calculates CCR
+          M33 = (kW[i][j]+excesskW[i][j])*M33price #calculates M33
+          EEP = (kWh[i][j]+offkWh[i][j])*EEPprice #calculates EEP
+          FLF = (kWh[i][j]+offkWh[i][j])*FLFprice #calculates FLF
+          Fuel = (kWh[i][j]+offkWh[i][j])*Fuelprice #calculates Fuel Price
+          FERC = (kWh[i][j]+offkWh[i][j])*FERCprice #calculates FERC
+          MFA = (ccharge+dcharge[i][j]+echarge[i][j]+excessdcharge[i][j]+offecharge[i][j]+FRP+IRC+TA+MISO+CCR+M33+EEP+FLF+Fuel+FERC)*MFAprice #Calculates MFA
+          MFA0 = (ccharge+dcharge[i][j]+excessdcharge[i][j]+FRP0+IRC0+TA0+MISO+CCR+M33)*MFAprice #Calculates MFA at 0 kWh
+          MFAdem = (dcharge[i][j]+excessdcharge[i][j]+FRPdem+IRCdem+TAdem+MISO+CCR+M33)*MFAprice #Calculates MFA with only kW
+          Tax = (ccharge+dcharge[i][j]+echarge[i][j]+excessdcharge[i][j]+offecharge[i][j]+FRP+IRC+TA+MISO+CCR+M33+EEP+FLF+Fuel+FERC+MFA)*Taxprice #calculates Tax
+          Tax0 = (ccharge+dcharge[i][j]+excessdcharge[i][j]+FRP0+IRC0+TA0+MISO+CCR+M33+MFA0)*Taxprice # Calculates Tax at 0 kWh
+          Taxdem = (dcharge[i][j]+excessdcharge[i][j]+FRPdem+IRCdem+TAdem+MISO+CCR+M33+MFAdem)*Taxprice # Calculates Tax with only kW
+          Total += ccharge+dcharge[i][j]+echarge[i][j]+excessdcharge[i][j]+offecharge[i][j]+FRP+IRC+TA+MISO+CCR+M33+EEP+FLF+Fuel+FERC+MFA+Tax #iteratedly adds the totals for each month
+          Total0 += ccharge+dcharge[i][j]+excessdcharge[i][j]+FRP0+IRC0+TA0+MISO+CCR+M33+MFA0+Tax0 #iteratedly adds the totals at 0 kWh for each month
+          Totaldem += dcharge[i][j]+excessdcharge[i][j]+FRPdem+IRCdem+TAdem+MISO+CCR+M33+MFAdem+Taxdem #iteratedly adds the totals with only kW for each month
+          MTotal = ccharge+dcharge[i][j]+echarge[i][j]+excessdcharge[i][j]+offecharge[i][j]+FRP+IRC+TA+MISO+CCR+M33+EEP+FLF+Fuel+FERC+MFA+Tax #monthly total for demand summary
+          Mdem = dcharge[i][j]+excessdcharge[i][j]+FRPdem+IRCdem+TAdem+MISO+CCR+M33+MFAdem+Taxdem #monthly kW only for demand summary
+          Monthlydemlist[i].append(round(Mdem,2)) #append monthly kW only
+          Monthlytotallist[i].append(round(MTotal,2)) #append monthly total
+          AEnergy += kWh[i][j]+offkWh[i][j] #iteratedly adds the energy for each month
+          ActTotal += float(amcharge[i][j])
+        Totallist.append(round(Total,2)) #appends total for that site
+        Total0list.append(round(Total0,2)) #appends total at 0 kWh for that site
+        Totaldemlist.append(round(Totaldem,2)) #appends total with only kW for that site
+        AEnergylist.append(int(AEnergy)) #appends annual energy for that site
+        dpkWh.append(round(Total/AEnergy,4)) #appends $/kWh for that site
+        consumption_dpkWh.append(round((Total-Total0)/AEnergy,4)) #appends consumption $/kWh for that site
+        consumption_cost.append(round(consumption_dpkWh[i]*AEnergy,2)) #appends calculated consumption cost for that site
+        perror.append((ActTotal - Total) / ActTotal)
+      #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+      elif rate[i] == 'AR_LG1': #calculations for AR_LG1 sites
+        #============================================================================================================================================================
+        ccharge = 90.53 #customer charge (UPDATE IF NEEDED)
+        summer_kWhprice_noriders = .02709 #summer period kWh without riders for FRP and IRC (what is found on rate schedule) (UPDATE IF NEEDED)
+        other_kWhprice_noriders = .01927 #other period kWh price without riders for FRP and IRC (what is found on rate schedule) (UPDATE IF NEEDED)
+        summer_kWprice_noriders = 13.85 #summer period kW without riders for FRP and IRC (what is found on rate schedule) (UPDATE IF NEEDED)
+        other_kWprice_noriders = 11.74 #other period kW price without riders for FRP and IRC (what is found on rate schedule) (UPDATE IF NEEDED)
+        FRPprice = .156625 #October 2019 FRP Price (UPDATE IF NEEDED)
+        IRCprice = -.004843 #October 2019 IRC Price (UPDATE IF NEEDED)
+        TAprice = -.0107 #October 2019 Tax Adjustment Price (UPDATE IF NEEDED)
+        Fuelprice = .01462 #October 2019 FUEL Price (UPDATE IF NEEDED)
+        FERCprice = .00013 #October 2019 FERC Price (UPDATE IF NEEDED)
+        MFAprice = .052 #October 2019 MFA Price (UPDATE IF NEEDED)
+        Taxprice= .09535 #Little Rock Tax Rate including Ice Storm Recovery Charge(UPDATE TO YOUR LOCATION)
+        #============================================================================================================================================================
+        Total = 0 #resets for each site
+        Total0 = 0 #resets for each site (0kWh)
+        Totaldem = 0 #resets for each site (only kW)
+        ActTotal = 0
+        AEnergy = 0 #resets for each site
+        for j in range(len(kWh[i])): #runs through one site
+          summer = 'N' #resets the month to not be a summer month
+          if j == 5: #set summer to Yes if month is June
+            summer = 'Y'
+          elif j == 6: #set summer to Yes if month is July
+            summer = 'Y'
+          elif j == 7: #set summer to Yes if month is August
+            summer = 'Y'
+          elif j == 8: #set summer to Yes if month is September
+            summer = 'Y'
+          if mb[i][j] == 'Y': #that month has a minimum bill charge
+            FRP = (ccharge + dcharge[i][j])*FRPprice #calculates FRP if MB
+            IRC = (ccharge + dcharge[i][j])*IRCprice #calculates IRC if MB
+            TA = (ccharge + dcharge[i][j])*TAprice #calculates TA if MB
+            if summer == 'Y':
+              FRP0 = (ccharge + kW[i][j]*summer_kWprice_noriders)*FRPprice #Calculates FRP at 0 kWh in summer month
+              IRC0 = (ccharge + kW[i][j]*summer_kWprice_noriders)*IRCprice #Calculates IRC at 0 kWh in summer month
+              TA0 = (ccharge + kW[i][j]*summer_kWprice_noriders)*IRCprice #Calculates TA at 0 kWh in summer month
+              FRPdem = kW[i][j]*summer_kWprice_noriders*FRPprice #Calculates FRP with only kW in summer month
+              IRCdem = kW[i][j]*summer_kWprice_noriders*IRCprice #Calculates IRC with only kW in summer month
+              TAdem = kW[i][j]*summer_kWprice_noriders*TAprice #Calculates TA with on kW in summer month
+            else:
+              FRP0 = (ccharge + kW[i][j]*other_kWprice_noriders)*FRPprice #Calculates FRP at 0 kWh if not a summer month
+              IRC0 = (ccharge + kW[i][j]*other_kWprice_noriders)*IRCprice #Calculates IRC at 0 kWh if not a summer month
+              TA0 = (ccharge + kW[i][j]*other_kWprice_noriders)*IRCprice #Calculates TA at 0 kWh if not a summer month
+              FRPdem = kW[i][j]*other_kWprice_noriders*FRPprice #Calculates FRP with only kW if not a summer month
+              IRCdem = kW[i][j]*other_kWprice_noriders*IRCprice #Calculates IRC with only kW if not a summer month
+              TAdem = kW[i][j]*other_kWprice_noriders*TAprice #Calculates TA with only kW if not a summer month
+          elif summer == 'Y': #checks if in summer month
+            FRP = (ccharge + kW[i][j]*summer_kWprice_noriders + kWh[i][j]*summer_kWhprice_noriders)*FRPprice #calculates FRP if summer month
+            IRC = (ccharge + kW[i][j]*summer_kWprice_noriders + kWh[i][j]*summer_kWhprice_noriders)*IRCprice #calculates IRC if summer month
+            TA = (ccharge + kW[i][j]*summer_kWprice_noriders + kWh[i][j]*summer_kWhprice_noriders)*TAprice #calculates TA if summer month
+            FRP0 = (ccharge + kW[i][j]*summer_kWprice_noriders)*FRPprice #Calculates FRP at 0 kWh in summer month
+            IRC0 = (ccharge + kW[i][j]*summer_kWprice_noriders)*IRCprice #Calculates IRC at 0 kWh in summer month
+            TA0 = (ccharge + kW[i][j]*summer_kWprice_noriders)*IRCprice #Calculates TA at 0 kWh in summer month
+            FRPdem = kW[i][j]*summer_kWprice_noriders*FRPprice #Calculates FRP with only kW in summer month
+            IRCdem = kW[i][j]*summer_kWprice_noriders*IRCprice #Calculates IRC with only kW in summer month
+            TAdem = kW[i][j]*summer_kWprice_noriders*TAprice #Calculates TA with on kW in summer month
+          else: #if not summer month
+            FRP = (ccharge + kW[i][j]*other_kWprice_noriders + kWh[i][j]*other_kWhprice_noriders)*FRPprice #calculates FRP if not a summer month
+            IRC = (ccharge + kW[i][j]*other_kWprice_noriders + kWh[i][j]*other_kWhprice_noriders)*IRCprice #calculates IRC if not a summer month
+            TA = (ccharge + kW[i][j]*other_kWprice_noriders + kWh[i][j]*other_kWhprice_noriders)*TAprice #calculates TA if not a summer month
+            FRP0 = (ccharge + kW[i][j]*other_kWprice_noriders)*FRPprice #Calculates FRP at 0 kWh if not a summer month
+            IRC0 = (ccharge + kW[i][j]*other_kWprice_noriders)*IRCprice #Calculates IRC at 0 kWh if not a summer month
+            TA0 = (ccharge + kW[i][j]*other_kWprice_noriders)*IRCprice #Calculates TA at 0 kWh if not a summer month
+            FRPdem = kW[i][j]*other_kWprice_noriders*FRPprice #Calculates FRP with only kW if not a summer month
+            IRCdem = kW[i][j]*other_kWprice_noriders*IRCprice #Calculates IRC with only kW if not a summer month
+            TAdem = kW[i][j]*other_kWprice_noriders*TAprice #Calculates TA with only kW if not a summer month
+          Fuel = kWh[i][j]*Fuelprice #Calculates Fuel Cost
+          FERC = kWh[i][j]*FERCprice #Calculates FERC
+          MFA = (FERC+Fuel+IRC+FRP+TA+dcharge[i][j]+echarge[i][j]+ccharge)*MFAprice #Calculates MFA
+          MFA0 = (IRC0+FRP0+TA0+dcharge[i][j]+ccharge)*MFAprice #Calculates MFA at 0 kWh
+          MFAdem = (FRPdem+IRCdem+TAdem+dcharge[i][j])*MFAprice #Calculates MFA with only kW
+          Tax = (MFA+FERC+Fuel+IRC+FRP+TA+dcharge[i][j]+echarge[i][j]+ccharge)*Taxprice #Calculates Tax
+          Tax0 = (MFA0+IRC0+FRP0+TA0+dcharge[i][j]+ccharge)*Taxprice #Calculates Tax at 0 kWh
+          Taxdem = (MFAdem+FRPdem+IRCdem+TAdem+dcharge[i][j])*Taxprice #Calculates Tax with only kW
+          Total += MFA+FERC+Fuel+IRC+FRP+TA+dcharge[i][j]+echarge[i][j]+ccharge+Tax #iteratedly adds the totals for each month
+          Total0 += MFA0+IRC0+FRP0+TA0+dcharge[i][j]+ccharge+Tax0 #iteratedly adds the totals at 0 kWh for each month
+          Totaldem += MFAdem+FRPdem+IRCdem+TAdem+dcharge[i][j]+Taxdem #kW only total for demand summary
+          MTotal = MFA+FERC+Fuel+IRC+FRP+TA+dcharge[i][j]+echarge[i][j]+ccharge+Tax #monthly total for demand summary
+          Mdem = MFAdem+FRPdem+IRCdem+TAdem+dcharge[i][j]+Taxdem #monthly kW only for demand summary
+          Monthlydemlist[i].append(round(Mdem,2)) #append monthly kW only
+          Monthlytotallist[i].append(round(MTotal,2)) #append monthly total
+          AEnergy += kWh[i][j] #iteratedly adds the energy for each month
+          ActTotal += float(amcharge[i][j])
+        Totallist.append(round(Total,2)) #appends total for that site
+        Total0list.append(round(Total0,2)) #appends total at 0 kWh for that site
+        Totaldemlist.append(round(Totaldem,2)) #appends total with only kW for that site
+        AEnergylist.append(int(AEnergy)) #appends annual energy for that site
+        dpkWh.append(round(Total/AEnergy,4)) #appends $/kWh for that site
+        consumption_dpkWh.append(round((Total-Total0)/AEnergy,4)) #appends consumption $/kWh for that site
+        consumption_cost.append(round(consumption_dpkWh[i]*AEnergy,2)) #appends calculated consumption cost for that site
+        perror.append((ActTotal - Total) / ActTotal)
+    #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  return Totallist, Total0list, Totaldemlist, Monthlydemlist, Monthlytotallist, AEnergylist, dpkWh, consumption_dpkWh, consumption_cost, perror #returns items needed for summary page as well as totals at 0 kWh
+
+#create lists with either summary sheet information or information for start function
+caccount = []
+name = []
+rate = []
+kWh = []
+kW = []
+echarge = []
+dcharge = []
+offecharge = []
+excessdcharge = []
+offkWh = []
+excesskW = []
+mb = []
+
+#-------------------------------------------------------------Reads Input File------------------------------------------------------------
+with open('UtilityFile.txt', 'r') as f: #open .txt file
+  lines = f.readlines() #read all the lines
+
+#go through each line individually, splitting at the : to get the appropriate data and swapping the numbers to floats
+for line in lines: #run through each line read
+  line = line.strip().split(':') #strip the white space and split the line at the colon
+  if line[0] == 'Project':
+    project = line[1].strip() #extract the project data
+  elif line[0] == 'Date':
+    date = line[1].strip() #extract the date data
+  elif line[0] == 'Utility':
+    utility = line[1].strip()
+  elif line[0] == 'Contract Account':
+    caccount.append(line[1].strip()) #exctract and append the account number
+  elif line[0] == 'Name':
+    name.append(line[1].strip()) #extract and append the site name
+  elif line[0] == 'Rate':
+    rate.append(line[1].strip()) #extract and append the rate schedule
+    if line[1].strip() != 'AR_PT1': #appends a blank list to the PT1 specific data so that the indecies continue to work in the equations
+      offecharge.append([])
+      excessdcharge.append([])
+      offkWh.append([])
+      excesskW.append([])
+  elif line[0] == 'kWh':
+    vals = line[1].split(',') #split the numbers at the commas
+    for i in range(len(vals)):
+      vals[i] = float(vals[i]) #change the strings into floats
+    kWh.append(vals) #append the new floats to kWh
+  elif line[0] == 'kW':
+    vals = line[1].split(',') #split the numbers at the commas
+    for i in range(len(vals)):
+      vals[i] = float(vals[i]) #change the strings into floats
+    kW.append(vals) #append the new floats to kW
+  elif line[0] == 'Energy Charge':
+    vals = line[1].split(',') #split the numbers at the commas
+    for i in range(len(vals)):
+      vals[i] = float(vals[i]) #change the strings into floats
+    echarge.append(vals) #append the new floats to energy charges
+  elif line[0] == 'Demand Charge':
+    vals = line[1].split(',') #split the numbers at the commas
+    for i in range(len(vals)):
+      vals[i] = float(vals[i]) #change the strings into floats
+    dcharge.append(vals) #append the new floats to demand charges
+  elif line[0] == 'offecharge':
+    vals = line[1].split(',') #split the numbers at the commas
+    for i in range(len(vals)):
+      vals[i] = float(vals[i]) #change the strings into floats
+    offecharge.append(vals) #append the new floats to off peak energy charges
+  elif line[0] == 'excessdcharge':
+    vals = line[1].split(',') #split the numbers at the commas
+    for i in range(len(vals)):
+      vals[i] = float(vals[i]) #change the strings into floats
+    excessdcharge.append(vals) #append the new floats to excess demand charges
+  elif line[0] == 'offkWh':
+    vals = line[1].split(',') #split the numbers at the commas
+    for i in range(len(vals)):
+      vals[i] = float(vals[i]) #change the strings into floats
+    offkWh.append(vals) #append the new floats to off peak kWhs
+  elif line[0] == 'excesskW':
+    vals = line[1].split(',') #split the numbers at the commas
+    for i in range(len(vals)):
+      vals[i] = float(vals[i]) #change the strings into floats
+    excesskW.append(vals) #append the new floats to excess kWs
+  elif line[0] == 'MBill':
+    vals = line[1].split(',') #split the Y or N at the commas
+    mb.append(vals) #append the strings to minimum bill
+  elif line[0] == 'Monthly Charge':
+    vals = line[1].split(',')
+    amcharge.append(vals)
+
+#run the start function
+Total, Total0, Totaldemlist, Monthlydemlist, Monthlytotallist, AEnergy, dpkWh, consumption_dpkWh, consumption_cost, perror = start(rate, kWh, kW, echarge, dcharge, mb, offecharge, excessdcharge, offkWh, excesskW)
+
+#print out the Total at 0 kWh and the site names with it for referene if needed
+print('\nBelow are the Total Annual Charges at 0 kWh for each site:')
+for i in range(len(name)):
+  print('\n' + name[i] + ': ' + str(Total0[i]))
+
+#-----------------------------------------------Writing to Excel-------------------------------------------------------
+
+#--------------------------------------------Creates the Excel Workbook------------------------------------------------------------
+#create a workbook titled Utility Analysis
+wb = xlsxwriter.Workbook('Utility Analysis.xlsx') 
+
+#--------------------------------------Styles for Excel--------------------------------------------
+#create the different styles used on the summary page
+
+#style 0 is used for sheet descriptions at the top of the page
+style0 = wb.add_format() #creates the format in excel
+style0.set_font_name('Calibri') #changes the font
+style0.set_font_size(11) #changes the font size
+style0.set_align('left') #changes the horizontal alignment
+style0.set_align('vcenter') #changes the vertical alignment
+
+#style 1 is used for data on this sheet involving words
+style1 = wb.add_format()
+style1.set_font_name('Calibri')
+style1.set_font_size(12)
+style1.set_align('center')
+style1.set_align('vcenter')
+style1.set_border() #puts a border around all sides
+
+#style 2 is used for number data on this sheet
+style2 = wb.add_format()
+style2.set_font_name('Calibri')
+style2.set_font_size(12)
+style2.set_align('center')
+style2.set_align('vcenter')
+style2.set_num_format('#,###,###') #creates a number format for excel to follow
+style2.set_border()
+
+#style 3 is used for money data on this sheet
+style3 = wb.add_format()
+style3.set_font_name('Calibri')
+style3.set_font_size(12)
+style3.set_align('center')
+style3.set_align('vcenter')
+style3.set_num_format('$#,###,###.00')
+style3.set_border()
+
+#style 4 is used for data rounded to 4 decimal places (cents)
+style4 = wb.add_format()
+style4.set_font_name('Calibri')
+style4.set_font_size(12)
+style4.set_align('center')
+style4.set_align('vcenter')
+style4.set_num_format('$0.0000')
+style4.set_border()
+
+perc_error_style = wb.add_format()
+perc_error_style.set_font_name('Calibri')
+perc_error_style.set_font_size(12)
+perc_error_style.set_align('center')
+perc_error_style.set_align('vcenter')
+perc_error_style.set_num_format('0.00%')
+perc_error_style.set_border()
+
+#styles for rate schedule analysis and demand analysis page
+merge_style = wb.add_format()
+merge_style.set_font_name('Calibri')
+merge_style.set_font_size(11)
+merge_style.set_bg_color('black') #sets background color
+merge_style.set_font_color('white') #sets font color
+merge_style.set_bold() #bolds teh text
+merge_style.set_center_across() #creates the affect of the cells being merged since tables cannot have actual merged cells
+
+header_style = wb.add_format()
+header_style.set_font_name('Calibri')
+header_style.set_font_size(11)
+header_style.set_align('center')
+header_style.set_align('vcenter')
+header_style.set_bg_color('black')
+header_style.set_font_color('white')
+header_style.set_bold()
+
+title_style = wb.add_format()
+title_style.set_font_name('Calibri')
+title_style.set_font_size(11)
+title_style.set_align('center')
+title_style.set_align('vcenter')
+title_style.set_border()
+
+num_style = wb.add_format()
+num_style.set_font_name('Calibri')
+num_style.set_font_size(10)
+num_style.set_align('center')
+num_style.set_align('vcenter')
+num_style.set_num_format('#,###,##0')
+
+money_style = wb.add_format()
+money_style.set_font_name('Calibri')
+money_style.set_font_size(10)
+money_style.set_align('center')
+money_style.set_align('vcenter')
+money_style.set_num_format('$#,###,###.00')
+
+total_style = wb.add_format()
+total_style.set_font_name('Calibri')
+total_style.set_font_size(10)
+total_style.set_align('right')
+total_style.set_align('vcenter')
+total_style.set_bold()
+
+total_money_style = wb.add_format()
+total_money_style.set_font_name('Calibri')
+total_money_style.set_font_size(10)
+total_money_style.set_align('center')
+total_money_style.set_align('vcenter')
+total_money_style.set_bold()
+total_money_style.set_num_format('$#,###,###.00')
+
+#styles used in Energy Analysis Table, Demand Analysis Table, and SSA Table page
+
+#style 5 is used for the headers
+style5 = wb.add_format()
+style5.set_font_name('Calibri')
+style5.set_font_size(11)
+style5.set_align('center')
+style5.set_align('vcenter')
+style5.set_bg_color('black')
+style5.set_font_color('white')
+style5.set_bold()
+style5.set_text_wrap() #makes text wrap
+
+#style 6 is used for the numbers
+style6 = wb.add_format()
+style6.set_font_name('Calibri')
+style6.set_font_size(10)
+style6.set_align('center')
+style6.set_align('vcenter')
+style6.set_num_format('#,###,###')
+
+#style 7 is used for the money
+style7 = wb.add_format()
+style7.set_font_name('Calibri')
+style7.set_font_size(10)
+style7.set_align('center')
+style7.set_align('vcenter')
+style7.set_num_format('$#,###,###.00')
+
+#style 8 is used for the cents
+style8 = wb.add_format()
+style8.set_font_name('Calibri')
+style8.set_font_size(10)
+style8.set_align('center')
+style8.set_align('vcenter')
+style8.set_num_format('$0.0000')
+
+#style 9 is used for non header text that is not wrapped
+style9 = wb.add_format()
+style9.set_font_name('Calibri')
+style9.set_font_size(10)
+style9.set_align('center')
+style9.set_align('vcenter')
+
+#style 10 is used for the word total in the SSA table
+style10 = wb.add_format()
+style10.set_font_name('Calibri')
+style10.set_font_size(10)
+style10.set_align('right')
+style10.set_align('vcenter')
+style10.set_bold()
+
+#style 11 is used for the comments below the tables
+style11 = wb.add_format()
+style11.set_font_name('Calibri')
+style11.set_font_size(9)
+style11.set_align('left')
+style11.set_align('vcenter')
+
+#style 12 is used for the total number at the bottom of the ssa table
+style12 = wb.add_format()
+style12.set_font_name('Calibri')
+style12.set_font_size(10)
+style12.set_align('center')
+style12.set_align('vcenter')
+style12.set_bold()
+style12.set_num_format('$#,###,###.00')
+
+#style 13 is used for non header text that is wrapped
+style13 = wb.add_format()
+style13.set_font_name('Calibri')
+style13.set_font_size(10)
+style13.set_align('center')
+style13.set_align('vcenter')
+style13.set_text_wrap()
+
+#style 14 is used for the word total in the rate schedule table
+style14 = wb.add_format()
+style14.set_font_name('Calibri')
+style14.set_font_size(10)
+style14.set_align('center')
+style14.set_align('vcenter')
+style14.set_bold()
+
+#style 15 is used for bolded numbers in the rate schedule table
+style15 = wb.add_format()
+style15.set_font_name('Calibri')
+style15.set_font_size(10)
+style15.set_align('center')
+style15.set_align('vcenter')
+style15.set_bold()
+style15.set_num_format('#,###,###')
+
+#style 16 is used for bolded rates in the rate schedule table
+style16 = wb.add_format()
+style16.set_font_name('Calibri')
+style16.set_font_size(10)
+style16.set_align('center')
+style16.set_align('vcenter')
+style16.set_bold()
+style16.set_num_format('$0.0000')
+
+#---------------------------------------Energy Summary Sheet--------------------------------------------------------
+#create a sheet in the workbook titled Energy Summary
+esummary = wb.add_worksheet('Energy Summary') 
+
+#Write the headers to the Summary page
+esummary.write(0,0,'Energy Analysis',style0) #row, column, what to write, style to write in
+esummary.write(2,0,'Project:',style0)
+esummary.write(2,1,project,style0)
+esummary.write(3,0,'Date:',style0)
+esummary.write(3,1,date,style0)
+esummary.write(5,0,'Summary',style0)
+esummary.write(6,0,'Contract Account',style1)
+esummary.set_column(0,0,20) #first comlumn to set, last column to set, width of columns in units
+esummary.write(6,1,'Name',style1)
+esummary.set_column(1,1,10)
+esummary.write(6,2,'Rate',style1)
+esummary.write(6,3,'Annual Energy (kWh)',style1)
+esummary.set_column(3,3,25)
+esummary.write(6,4,'Total Annual Charges',style1)
+esummary.set_column(4,4,25)
+esummary.write(6,5,'Total $/kWh',style1)
+esummary.set_column(5,5,15)
+esummary.write(6,6,'Consumption $/kWh',style1)
+esummary.set_column(6,6,20)
+esummary.write(6,7,'Calculated Consumption Costs ($)',style1)
+esummary.set_column(7,7,35)
+esummary.write(6,8,'Percent Error', style1)
+esummary.set_column(8,8,15)
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#Initialize the total information
+LG_Tot = 0
+LG_AE = 0
+LG_Cons_Cost = 0
+PT_Tot = 0
+PT_AE = 0
+PT_Cons_Cost = 0
+SG_Tot = 0
+SG_AE = 0
+SG_Cons_Cost = 0
+Tot = 0
+AE = 0
+Cons_Cost = 0
+
+#Calculate the totals for the bottom of the summary page
+for i in range(len(Total)): #runs through all sites
+  #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  if utility == 'Entergy':
+    if rate[i] == 'AR_SG1': #adds all the SGS up for the bottom table showing the SGS and LG specific data
+      SG_Tot += Total[i]
+      SG_AE += AEnergy[i]
+      SG_Cons_Cost += consumption_cost[i]
+      Tot += Total[i]
+      AE += AEnergy[i]
+      Cons_Cost += consumption_cost[i]
+    elif rate[i] == 'AR_LG1': #adds all the LGS up for the bottom table showing the SGS and LG specific data
+      LG_Tot += Total[i]
+      LG_AE += AEnergy[i]
+      LG_Cons_Cost += consumption_cost[i]
+      Tot += Total[i]
+      AE += AEnergy[i]
+      Cons_Cost += consumption_cost[i]
+    elif rate[i] == 'AR_PT1': #adds all the PT up for the bottom table showing the SGS and LG specific data
+      PT_Tot += Total[i]
+      PT_AE += AEnergy[i]
+      PT_Cons_Cost += consumption_cost[i]
+      Tot += Total[i]
+      AE += AEnergy[i]
+      Cons_Cost += consumption_cost[i]
+  #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#write the data to the summary page
+  esummary.write(i+7,0,caccount[i],style1)
+  esummary.write(i+7,1,name[i],style1)
+  cwidth = 10
+  if (len(name[i])) > cwidth:  
+    esummary.set_column(1,1,len(name[i])+5) #(Modify column width to match biggest data in that column)
+    cwidth = len(name[i]) + 5
+  esummary.write(i+7,2,rate[i],style1)
+  esummary.write(i+7,3,AEnergy[i],style2)
+  esummary.write(i+7,4,Total[i],style3)
+  esummary.write(i+7,5,dpkWh[i],style4)
+  esummary.write(i+7,6,consumption_dpkWh[i],style4)
+  esummary.write(i+7,7,consumption_cost[i],style3)
+  esummary.write(i+7,8,perror[i],perc_error_style)
+  num_rows = i+8
+
+#calculate the weighted averages
+Tot_dpkWh = Tot/AE
+Tot_Cons_dpkWh = Cons_Cost/AE
+SG_Tot_dpkWh = SG_Tot/SG_AE
+SG_Tot_Cons_dpkWh = SG_Cons_Cost/SG_AE
+
+#//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+if utility == 'Entergy':
+  if LG_Tot != 0: #ensures there is not a zero division error
+    LG_Tot_dpkWh = LG_Tot/LG_AE
+    LG_Tot_Cons_dpkWh = LG_Cons_Cost/LG_AE
+
+  if PT_Tot != 0: #ensures there is not a zero division error
+    PT_Tot_dpkWh = PT_Tot/PT_AE
+    PT_Tot_Cons_dpkWh = PT_Cons_Cost/PT_AE
+
+  #write the headers and the data for the weighted averages and totals
+  if LG_Tot != 0 and PT_Tot != 0: #case where both LG and PT are present
+    esummary.write(num_rows+1,2,'Totals',style1)
+    esummary.write(num_rows+2,2,'Totals of all PT',style1)
+    esummary.write(num_rows+3,2,'Totals of all LG',style1)
+    esummary.write(num_rows+4,2,'Totals of all SG',style1) 
+    esummary.set_column(2,2,len('Totals of all SG')+5)
+
+    esummary.write(num_rows+1,3,AE,style2)
+    esummary.write(num_rows+2,3,PT_AE,style2)
+    esummary.write(num_rows+3,3,LG_AE,style2)
+    esummary.write(num_rows+4,3,SG_AE,style2)
+
+    esummary.write(num_rows+1,4,Tot,style3)
+    esummary.write(num_rows+2,4,PT_Tot,style3)
+    esummary.write(num_rows+3,4,LG_Tot,style3)
+    esummary.write(num_rows+4,4,SG_Tot,style3)
+
+    esummary.write(num_rows+1,5,Tot_dpkWh,style4)
+    esummary.write(num_rows+2,5,PT_Tot_dpkWh,style4)
+    esummary.write(num_rows+3,5,LG_Tot_dpkWh,style4)
+    esummary.write(num_rows+4,5,SG_Tot_dpkWh,style4)
+
+    esummary.write(num_rows+1,6,Tot_Cons_dpkWh,style4)
+    esummary.write(num_rows+2,6,PT_Tot_Cons_dpkWh,style4)
+    esummary.write(num_rows+3,6,LG_Tot_Cons_dpkWh,style4)
+    esummary.write(num_rows+4,6,SG_Tot_Cons_dpkWh,style4)
+
+    esummary.write(num_rows+1,7,Cons_Cost,style3)
+    esummary.write(num_rows+2,7,PT_Cons_Cost,style3)
+    esummary.write(num_rows+3,7,LG_Cons_Cost,style3)
+    esummary.write(num_rows+4,7,SG_Cons_Cost,style3)
+  elif LG_Tot == 0 and PT_Tot != 0: #case where only PT is present
+    esummary.write(num_rows+1,2,'Totals',style1)
+    esummary.write(num_rows+2,2,'Totals of all PT',style1)
+    esummary.write(num_rows+3,2,'Totals of all SG',style1) 
+    esummary.set_column(2,2,len('Totals of all SG')+5)
+
+    esummary.write(num_rows+1,3,AE,style2)
+    esummary.write(num_rows+2,3,PT_AE,style2)
+    esummary.write(num_rows+3,3,SG_AE,style2)
+
+    esummary.write(num_rows+1,4,Tot,style3)
+    esummary.write(num_rows+2,4,PT_Tot,style3)
+    esummary.write(num_rows+3,4,SG_Tot,style3)
+
+    esummary.write(num_rows+1,5,Tot_dpkWh,style4)
+    esummary.write(num_rows+2,5,PT_Tot_dpkWh,style4)
+    esummary.write(num_rows+3,5,SG_Tot_dpkWh,style4)
+
+    esummary.write(num_rows+1,6,Tot_Cons_dpkWh,style4)
+    esummary.write(num_rows+2,6,PT_Tot_Cons_dpkWh,style4)
+    esummary.write(num_rows+3,6,SG_Tot_Cons_dpkWh,style4)
+
+    esummary.write(num_rows+1,7,Cons_Cost,style3)
+    esummary.write(num_rows+2,7,PT_Cons_Cost,style3)
+    esummary.write(num_rows+3,7,SG_Cons_Cost,style3)
+  elif LG_Tot != 0 and PT_Tot == 0: #case where only LG is present
+    esummary.write(num_rows+1,2,'Totals',style1)
+    esummary.write(num_rows+2,2,'Totals of all LG',style1)
+    esummary.write(num_rows+3,2,'Totals of all SG',style1) 
+    esummary.set_column(2,2,len('Totals of all SG')+5)
+
+    esummary.write(num_rows+1,3,AE,style2)
+    esummary.write(num_rows+2,3,LG_AE,style2)
+    esummary.write(num_rows+3,3,SG_AE,style2)
+
+    esummary.write(num_rows+1,4,Tot,style3)
+    esummary.write(num_rows+2,4,LG_Tot,style3)
+    esummary.write(num_rows+3,4,SG_Tot,style3)
+
+    esummary.write(num_rows+1,5,Tot_dpkWh,style4)
+    esummary.write(num_rows+2,5,LG_Tot_dpkWh,style4)
+    esummary.write(num_rows+3,5,SG_Tot_dpkWh,style4)
+
+    esummary.write(num_rows+1,6,Tot_Cons_dpkWh,style4)
+    esummary.write(num_rows+2,6,LG_Tot_Cons_dpkWh,style4)
+    esummary.write(num_rows+3,6,SG_Tot_Cons_dpkWh,style4)
+
+    esummary.write(num_rows+1,7,Cons_Cost,style3)
+    esummary.write(num_rows+2,7,LG_Cons_Cost,style3)
+    esummary.write(num_rows+3,7,SG_Cons_Cost,style3)
+  elif LG_Tot == 0 and PT_Tot == 0: #case where only SG is present
+    esummary.write(num_rows+1,2,'Totals',style1)
+    esummary.write(num_rows+1,3,AE,style2)
+    esummary.write(num_rows+1,4,Tot,style3)
+    esummary.write(num_rows+1,5,Tot_dpkWh,style4)
+    esummary.write(num_rows+1,6,Tot_Cons_dpkWh,style4)
+    esummary.write(num_rows+1,7,Cons_Cost,style3)
+#//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+#--------------------------------Rate Schedule Comparison Sheet--------------------------------------------
+#create a worksheet in the workbook title Rate Schedule Comparison
+rstable = wb.add_worksheet('Rate Schedule Comparison')
+
+#set rate schedule table column widths
+rstable.set_column('A:F', 15)
+
+#create and write to the table depending on how many rate schedules there are
+#//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+if utility == 'Entergy':
+  #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  if LG_Tot != 0 and PT_Tot != 0: #case where both LG and PT are present
+    rstable.add_table('A1:F6', {'header_row': False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+    rstable.write(0,0,'______ Electric Bill Summary by Rate Type (Based on ____ - ____ Bills)', merge_style)
+    rstable.write(0,1,'',merge_style) #blank string written here so that the above header is centered across all rows in the table
+    rstable.write(0,2,'',merge_style)
+    rstable.write(0,3,'',merge_style)
+    rstable.write(0,4,'',merge_style)
+    rstable.write(0,5,'',merge_style)
+    rstable.write(1,0,'Entergy Rate Schedule', style5)
+    rstable.write(1,1,'Annual Consumption (kWh)', style5)
+    rstable.write(1,2,'Annual Total Costs ($)', style5)
+    rstable.write(1,3,'Rate ($/kWh)', style5)
+    rstable.write(1,4,'Annual Consumption Costs ($) (1)', style5)
+    rstable.write(1,5,'Consumption-Only Rate ($/kWh) (1)', style5)
+    rstable.write(2,0,'Small General Service',style13)
+    rstable.write(2,1,SG_AE, num_style)
+    rstable.write(2,2,SG_Tot, money_style)
+    rstable.write(2,3,SG_Tot_dpkWh, style8)
+    rstable.write(2,4,SG_Cons_Cost, money_style)
+    rstable.write(2,5,SG_Tot_Cons_dpkWh,style8)
+    rstable.write(3,0,'Large General Service',style13)
+    rstable.write(3,1,LG_AE, num_style)
+    rstable.write(3,2,LG_Tot, money_style)
+    rstable.write(3,3,LG_Tot_dpkWh, style8)
+    rstable.write(3,4,LG_Cons_Cost, money_style)
+    rstable.write(3,5,LG_Tot_Cons_dpkWh,style8)
+    rstable.write(4,0,'Large General Service Time-Of-Use',style13)
+    rstable.write(4,1,PT_AE, num_style)
+    rstable.write(4,2,PT_Tot, money_style)
+    rstable.write(4,3,PT_Tot_dpkWh, style8)
+    rstable.write(4,4,PT_Cons_Cost, money_style)
+    rstable.write(4,5,PT_Tot_Cons_dpkWh,style8)
+    rstable.write(5,0,'Total',style14)
+    rstable.write(5,1,AE,style15)
+    rstable.write(5,2,Tot,total_money_style)
+    rstable.write(5,3,Tot_dpkWh,style16)
+    rstable.write(5,4,Cons_Cost,total_money_style)
+    rstable.write(5,5,Tot_Cons_dpkWh,style16)
+    rstable.write(6,0,'(1) Consumption costs and rates represent avoidable costs and are based on electric bill energy (kWh) charges',style11)
+  elif LG_Tot == 0 and PT_Tot != 0: #case where only PT is present
+    rstable.add_table('A1:F5', {'header_row': False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+    rstable.write(0,0,'______ Electric Bill Summary by Rate Type (Based on ____ - ____ Bills)', merge_style)
+    rstable.write(0,1,'',merge_style)
+    rstable.write(0,2,'',merge_style)
+    rstable.write(0,3,'',merge_style)
+    rstable.write(0,4,'',merge_style)
+    rstable.write(0,5,'',merge_style)
+    rstable.write(1,0,'Entergy Rate Schedule', style5)
+    rstable.write(1,1,'Annual Consumption (kWh)', style5)
+    rstable.write(1,2,'Annual Total Costs ($)', style5)
+    rstable.write(1,3,'Rate ($/kWh)', style5)
+    rstable.write(1,4,'Annual Consumption Costs ($) (1)', style5)
+    rstable.write(1,5,'Consumption-Only Rate ($/kWh) (1)', style5)
+    rstable.write(2,0,'Small General Service',style13)
+    rstable.write(2,1,SG_AE, num_style)
+    rstable.write(2,2,SG_Tot, money_style)
+    rstable.write(2,3,SG_Tot_dpkWh, style8)
+    rstable.write(2,4,SG_Cons_Cost, money_style)
+    rstable.write(2,5,SG_Tot_Cons_dpkWh,style8)
+    rstable.write(3,0,'Large General Service Time-Of-Use',style13)
+    rstable.write(3,1,PT_AE, num_style)
+    rstable.write(3,2,PT_Tot, money_style)
+    rstable.write(3,3,PT_Tot_dpkWh, style8)
+    rstable.write(3,4,PT_Cons_Cost, money_style)
+    rstable.write(3,5,PT_Tot_Cons_dpkWh,style8)
+    rstable.write(4,0,'Total',style14)
+    rstable.write(4,1,AE,style15)
+    rstable.write(4,2,Tot,total_money_style)
+    rstable.write(4,3,Tot_dpkWh,style16)
+    rstable.write(4,4,Cons_Cost,total_money_style)
+    rstable.write(4,5,Tot_Cons_dpkWh,style16)
+    rstable.write(5,0,'(1) Consumption costs and rates represent avoidable costs and are based on electric bill energy (kWh) charges',style11)
+  elif LG_Tot != 0 and PT_Tot == 0: #case where only LG is present
+    rstable.add_table('A1:F5', {'header_row': False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+    rstable.write(0,0,'______ Electric Bill Summary by Rate Type (Based on ____ - ____ Bills)', merge_style)
+    rstable.write(0,1,'',merge_style)
+    rstable.write(0,2,'',merge_style)
+    rstable.write(0,3,'',merge_style)
+    rstable.write(0,4,'',merge_style)
+    rstable.write(0,5,'',merge_style)
+    rstable.write(1,0,'Entergy Rate Schedule', style5)
+    rstable.write(1,1,'Annual Consumption (kWh)', style5)
+    rstable.write(1,2,'Annual Total Costs ($)', style5)
+    rstable.write(1,3,'Rate ($/kWh)', style5)
+    rstable.write(1,4,'Annual Consumption Costs ($) (1)', style5)
+    rstable.write(1,5,'Consumption-Only Rate ($/kWh) (1)', style5)
+    rstable.write(2,0,'Small General Service',style13)
+    rstable.write(2,1,SG_AE, num_style)
+    rstable.write(2,2,SG_Tot, money_style)
+    rstable.write(2,3,SG_Tot_dpkWh, style8)
+    rstable.write(2,4,SG_Cons_Cost, money_style)
+    rstable.write(2,5,SG_Tot_Cons_dpkWh,style8)
+    rstable.write(3,0,'Large General Service',style13)
+    rstable.write(3,1,LG_AE, num_style)
+    rstable.write(3,2,LG_Tot, money_style)
+    rstable.write(3,3,LG_Tot_dpkWh, style8)
+    rstable.write(3,4,LG_Cons_Cost, money_style)
+    rstable.write(3,5,LG_Tot_Cons_dpkWh,style8)
+    rstable.write(4,0,'Total',style14)
+    rstable.write(4,1,AE,style15)
+    rstable.write(4,2,Tot,total_money_style)
+    rstable.write(4,3,Tot_dpkWh,style16)
+    rstable.write(4,4,Cons_Cost,total_money_style)
+    rstable.write(4,5,Tot_Cons_dpkWh,style16)
+    rstable.write(5,0,'(1) Consumption costs and rates represent avoidable costs and are based on electric bill energy (kWh) charges',style11)
+  elif PT_Tot == 0 and LG_Tot == 0: #case where only SG is present
+    rstable.add_table('A1:F3', {'header_row': False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+    rstable.write(0,0,'______ Electric Bill Summary (Based on ____ - ____ Bills)', merge_style)
+    rstable.write(0,1,'',merge_style)
+    rstable.write(0,2,'',merge_style)
+    rstable.write(0,3,'',merge_style)
+    rstable.write(0,4,'',merge_style)
+    rstable.write(0,5,'',merge_style)
+    rstable.write(1,0,'',style5)
+    rstable.write(1,1,'Annual Consumption (kWh)', style5)
+    rstable.write(1,2,'Annual Total Costs ($)', style5)
+    rstable.write(1,3,'Rate ($/kWh)', style5)
+    rstable.write(1,4,'Annual Consumption Costs ($) (1)', style5)
+    rstable.write(1,5,'Consumption-Only Rate ($/kWh) (1)', style5)
+    rstable.write(2,0,'Total',style14)
+    rstable.write(2,1,AE,style15)
+    rstable.write(2,2,Tot,total_money_style)
+    rstable.write(2,3,Tot_dpkWh,style16)
+    rstable.write(2,4,Cons_Cost,total_money_style)
+    rstable.write(2,5,Tot_Cons_dpkWh,style16)
+    rstable.write(3,0,'(1) Consumption costs and rates represent avoidable costs and are based on electric bill energy (kWh) charges',style11)
+  #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#--------------------------------------------Energy Analysis Table Sheet--------------------------------------
+#create a worksheet in the workbook titled Energy Analysis Table
+eatable = wb.add_worksheet('Energy Analysis Table') 
+
+#Figures out the location for the table based on how many sites there are
+loc = 'A1:G' + str(len(name)+1)
+
+#creates the table on the energy analysis page
+eatable.add_table(loc, {'header_row': False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+
+#write the headers to the table
+eatable.write(0,0,'Account Name',style5)
+eatable.write(0,1,'Account ID',style5)
+eatable.write(0,2,'Rate Schedule',style5)
+eatable.write(0,3,'Annual Consumption (kWh)',style5)
+eatable.write(0,4,'Annual Costs ($) (1)',style5)
+eatable.write(0,5,'Annual Consumption Costs ($) (1)',style5)
+eatable.write(0,6,'Consumption Rate ($/kWh)',style5)
+
+#set the column widths for the table
+eatable.set_column('A:B',12.5)
+eatable.set_column('C:C',10.5)
+eatable.set_column('D:D',13.2)
+eatable.set_column('E:E',12)
+eatable.set_column('F:G', 14)
+
+#write the data to the table
+for i in range(len(name)):
+  eatable.write(i+1,0,name[i],style13)
+  eatable.write(i+1,1,caccount[i],style9)
+  eatable.write(i+1,2,rate[i],style9)
+  eatable.write(i+1,3,AEnergy[i],style6)
+  eatable.write(i+1,4,Total[i],style7)
+  eatable.write(i+1,5,consumption_cost[i],style7)
+  eatable.write(i+1,6,consumption_dpkWh[i],style8)
+
+#writes the table comment below it
+eatable.write(len(name)+1,0,'(1) Consumption costs and rates represent avoidable costs and are based on electric bill energy (kWh) charges',style11)
+
+#--------------------------------------Demand Summary------------------------------------------
+#create a sheet in the workbook titled Demand Summary
+dsummary = wb.add_worksheet('Demand Summary') 
+
+#write page info
+dsummary.write(0,0,'Demand Analysis',style0)
+dsummary.write(2,0,'Project:',style0)
+dsummary.write(2,1,project,style0)
+dsummary.write(3,0,'Date:',style0)
+dsummary.write(3,1,date,style0)
+dsummary.write(5,0,'Summary',style0)
+dsummary.set_column(0,0,20)
+dsummary.set_column(1,1,len(project)+5)
+dsummary.set_column(3,3,15)
+dsummary.set_column(4,4,12)
+dsummary.set_column(5,5,20)
+dsummary.set_column(6,6,25)
+dsummary.set_column(7,7,25)
+dsummary.set_column(9,9,15)
+dsummary.set_column(10,10,12)
+dsummary.set_column(11,11,20)
+dsummary.set_column(12,12,25)
+dsummary.set_column(13,13,25)
+
+#commonly referenced titles for the demand analysis page
+month = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+PT_titles = ['On Peak kW', 'Excess kW', 'Total Monthly Charges', 'kW Only Monthly Charges']
+SG_titles = ['kW', 'Total Monthly Charges', 'kW Only Monthly Charges']
+
+#build tables and write to them
+#//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+if utility == 'Entergy':
+  if len(name) % 2 == 0: #is even
+    for i in range(int(len(name)/2)): #run through all but 2 since the division can be done (is even) and writing two tables per set of rows
+      #************************************************************************************************************************************************************
+      if rate[i*2] == 'AR_PT1': #PT_1 has more data then LGS and SGS
+        dsummary.add_table(i*17+i+1,3, i*17+i+17, 7,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'}) #creates a table without a header row, autofilter, and with table style medium. Location is first row, first column, last row, last column
+        dsummary.write(i*17+i+1, 3, 'Account ID:', header_style)
+        dsummary.write(i*17+i+2, 3, 'Rate Schedule:', header_style)
+        dsummary.write(i*17+i+3, 3, 'Account Name:', header_style)
+        dsummary.write(i*17+i+1, 4, caccount[i*2], merge_style)
+        dsummary.write(i*17+i+1, 5, '', merge_style) #blank string written here so the above header is centered across the table
+        dsummary.write(i*17+i+1, 6, '', merge_style)
+        dsummary.write(i*17+i+1, 7, '', merge_style)
+        dsummary.write(i*17+i+2, 4, rate[i*2], merge_style)
+        dsummary.write(i*17+i+2, 5, '', merge_style)
+        dsummary.write(i*17+i+2, 6, '', merge_style)
+        dsummary.write(i*17+i+2, 7, '', merge_style)
+        dsummary.write(i*17+i+3, 4, name[i*2], merge_style)
+        dsummary.write(i*17+i+3, 5, '', merge_style)
+        dsummary.write(i*17+i+3, 6, '', merge_style)
+        dsummary.write(i*17+i+3, 7, '', merge_style)
+        for j in range(12): #write the monthly data
+          dsummary.write(i*17+i+j+5,3,month[j],title_style)
+          dsummary.write(i*17+i+j+5,4,kW[i*2][j],num_style)
+          dsummary.write(i*17+i+j+5,5,excesskW[i*2][j],num_style)
+          dsummary.write(i*17+i+j+5,6,Monthlytotallist[i*2][j],money_style)
+          dsummary.write(i*17+i+j+5,7,Monthlydemlist[i*2][j],money_style)
+        for j in range(4): #write the headers that change depending on if PT1 or other
+          dsummary.write(i*17+i+4, j+4, PT_titles[j], title_style)
+        dsummary.write(i*17+i+17, 5, 'Total', total_style)
+        dsummary.write(i*17+i+17, 7, Totaldemlist[i*2], total_money_style)
+        dsummary.write(i*17+i+17, 6, Total[i*2], total_money_style)
+      else: #not PT1
+        dsummary.add_table(i*17+i+1,3, i*17+i+17, 6,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+        dsummary.write(i*17+i+1, 3, 'Account ID:', header_style)
+        dsummary.write(i*17+i+2, 3, 'Rate Schedule:', header_style)
+        dsummary.write(i*17+i+3, 3, 'Account Name:', header_style)
+        dsummary.write(i*17+i+1, 4, caccount[i*2], merge_style)
+        dsummary.write(i*17+i+1, 5, '', merge_style)
+        dsummary.write(i*17+i+1, 6, '', merge_style)
+        dsummary.write(i*17+i+2, 4, rate[i*2], merge_style)
+        dsummary.write(i*17+i+2, 5, '', merge_style)
+        dsummary.write(i*17+i+2, 6, '', merge_style)
+        dsummary.write(i*17+i+3, 4, name[i*2], merge_style)
+        dsummary.write(i*17+i+3, 5, '', merge_style)
+        dsummary.write(i*17+i+3, 6, '', merge_style)
+        for j in range(12):
+          dsummary.write(i*17+i+j+5,3,month[j],title_style)
+          dsummary.write(i*17+i+j+5,4,kW[i*2][j],num_style)
+          dsummary.write(i*17+i+j+5,5,Monthlytotallist[i*2][j],money_style)
+          dsummary.write(i*17+i+j+5,6,Monthlydemlist[i*2][j],money_style)
+        for j in range(3):
+          dsummary.write(i*17+i+4, j+4, SG_titles[j], title_style)
+        dsummary.write(i*17+i+17, 4, 'Total', total_style)
+        dsummary.write(i*17+i+17, 6, Totaldemlist[i*2], total_money_style)
+        dsummary.write(i*17+i+17, 5, Total[i*2], total_money_style)
+      if rate[i*2+1] == 'AR_PT1': #second table in that set of rows
+        dsummary.add_table(i*17+i+1,9, i*17+i+17, 13,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+        dsummary.write(i*17+i+1, 9, 'Account ID:', header_style)
+        dsummary.write(i*17+i+2, 9, 'Rate Schedule:', header_style)
+        dsummary.write(i*17+i+3, 9, 'Account Name:', header_style)
+        dsummary.write(i*17+i+1, 10, caccount[i*2+1], merge_style)
+        dsummary.write(i*17+i+1, 11, '', merge_style)
+        dsummary.write(i*17+i+1, 12, '', merge_style)
+        dsummary.write(i*17+i+1, 13, '', merge_style)
+        dsummary.write(i*17+i+2, 10, rate[i*2+1], merge_style)
+        dsummary.write(i*17+i+2, 11, '', merge_style)
+        dsummary.write(i*17+i+2, 12, '', merge_style)
+        dsummary.write(i*17+i+2, 13, '', merge_style)
+        dsummary.write(i*17+i+3, 10, name[i*2+1], merge_style)
+        dsummary.write(i*17+i+3, 11, '', merge_style)
+        dsummary.write(i*17+i+3, 12, '', merge_style)
+        dsummary.write(i*17+i+3, 13, '', merge_style)
+        for j in range(12):
+          dsummary.write(i*17+i+j+5,9,month[j],title_style)
+          dsummary.write(i*17+i+j+5,10,kW[i*2+1][j],num_style)
+          dsummary.write(i*17+i+j+5,11,excesskW[i*2+1][j],num_style)
+          dsummary.write(i*17+i+j+5,12,Monthlytotallist[i*2+1][j],money_style)
+          dsummary.write(i*17+i+j+5,13,Monthlydemlist[i*2+1][j],money_style)
+        for j in range(4):
+          dsummary.write(i*17+i+4, j+10, PT_titles[j], title_style)
+        dsummary.write(i*17+i+17, 11, 'Total', total_style)
+        dsummary.write(i*17+i+17, 13, Totaldemlist[i*2+1], total_money_style)
+        dsummary.write(i*17+i+17, 12, Total[i*2+1], total_money_style)
+      else:
+        dsummary.add_table(i*17+i+1,9, i*17+i+17, 12,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+        dsummary.write(i*17+i+1, 9, 'Account ID:', header_style)
+        dsummary.write(i*17+i+2, 9, 'Rate Schedule:', header_style)
+        dsummary.write(i*17+i+3, 9, 'Account Name:', header_style)
+        dsummary.write(i*17+i+1, 10, caccount[i*2+1], merge_style)
+        dsummary.write(i*17+i+1, 11, '', merge_style)
+        dsummary.write(i*17+i+1, 12, '', merge_style)
+        dsummary.write(i*17+i+2, 10, rate[i*2+1], merge_style)
+        dsummary.write(i*17+i+2, 11, '', merge_style)
+        dsummary.write(i*17+i+2, 12, '', merge_style)
+        dsummary.write(i*17+i+3, 10, name[i*2+1], merge_style)
+        dsummary.write(i*17+i+3, 11, '', merge_style)
+        dsummary.write(i*17+i+3, 12, '', merge_style)
+        for j in range(12):
+          dsummary.write(i*17+i+j+5,9,month[j],title_style)
+          dsummary.write(i*17+i+j+5,10,kW[i*2+1][j],num_style)
+          dsummary.write(i*17+i+j+5,11,Monthlytotallist[i*2+1][j],money_style)
+          dsummary.write(i*17+i+j+5,12,Monthlydemlist[i*2+1][j],money_style)
+        for j in range(3):
+          dsummary.write(i*17+i+4, j+10, SG_titles[j], title_style)
+        dsummary.write(i*17+i+17, 10, 'Total', total_style)
+        dsummary.write(i*17+i+17, 12, Totaldemlist[i*2+1], total_money_style)
+        dsummary.write(i*17+i+17, 11, Total[i*2+1], total_money_style)
+  else: #is odd
+    for i in range(int(len(name)/2 - .5)): #division is done differently and adds one more table below all the others at the end
+      if rate[i*2] == 'AR_PT1':
+        dsummary.add_table(i*17+i+1,3, i*17+i+17, 7,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+        dsummary.write(i*17+i+1, 3, 'Account ID:', header_style)
+        dsummary.write(i*17+i+2, 3, 'Rate Schedule:', header_style)
+        dsummary.write(i*17+i+3, 3, 'Account Name:', header_style)
+        dsummary.write(i*17+i+1, 4, caccount[i*2], merge_style)
+        dsummary.write(i*17+i+1, 5, '', merge_style)
+        dsummary.write(i*17+i+1, 6, '', merge_style)
+        dsummary.write(i*17+i+1, 7, '', merge_style)
+        dsummary.write(i*17+i+2, 4, rate[i*2], merge_style)
+        dsummary.write(i*17+i+2, 5, '', merge_style)
+        dsummary.write(i*17+i+2, 6, '', merge_style)
+        dsummary.write(i*17+i+2, 7, '', merge_style)
+        dsummary.write(i*17+i+3, 4, name[i*2], merge_style)
+        dsummary.write(i*17+i+3, 5, '', merge_style)
+        dsummary.write(i*17+i+3, 6, '', merge_style)
+        dsummary.write(i*17+i+3, 7, '', merge_style)
+        for j in range(12):
+          dsummary.write(i*17+i+j+5,3,month[j],title_style)
+          dsummary.write(i*17+i+j+5,4,kW[i*2][j],num_style)
+          dsummary.write(i*17+i+j+5,5,excesskW[i*2][j],num_style)
+          dsummary.write(i*17+i+j+5,6,Monthlytotallist[i*2][j],money_style)
+          dsummary.write(i*17+i+j+5,7,Monthlydemlist[i*2][j],money_style)
+        for j in range(4):
+          dsummary.write(i*17+i+4, j+4, PT_titles[j], title_style)
+        dsummary.write(i*17+i+17, 5, 'Total', total_style)
+        dsummary.write(i*17+i+17, 7, Totaldemlist[i*2], total_money_style)
+        dsummary.write(i*17+i+17, 6, Total[i*2], total_money_style)
+      else:
+        dsummary.add_table(i*17+i+1,3, i*17+i+17, 6,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+        dsummary.write(i*17+i+1, 3, 'Account ID:', header_style)
+        dsummary.write(i*17+i+2, 3, 'Rate Schedule:', header_style)
+        dsummary.write(i*17+i+3, 3, 'Account Name:', header_style)
+        dsummary.write(i*17+i+1, 4, caccount[i*2], merge_style)
+        dsummary.write(i*17+i+1, 5, '', merge_style)
+        dsummary.write(i*17+i+1, 6, '', merge_style)
+        dsummary.write(i*17+i+2, 4, rate[i*2], merge_style)
+        dsummary.write(i*17+i+2, 5, '', merge_style)
+        dsummary.write(i*17+i+2, 6, '', merge_style)
+        dsummary.write(i*17+i+3, 4, name[i*2], merge_style)
+        dsummary.write(i*17+i+3, 5, '', merge_style)
+        dsummary.write(i*17+i+3, 6, '', merge_style)
+        for j in range(12):
+          dsummary.write(i*17+i+j+5,3,month[j],title_style)
+          dsummary.write(i*17+i+j+5,4,kW[i*2][j],num_style)
+          dsummary.write(i*17+i+j+5,5,Monthlytotallist[i*2][j],money_style)
+          dsummary.write(i*17+i+j+5,6,Monthlydemlist[i*2][j],money_style)
+        for j in range(3):
+          dsummary.write(i*17+i+4, j+4, SG_titles[j], title_style)
+        dsummary.write(i*17+i+17, 4, 'Total', total_style)
+        dsummary.write(i*17+i+17, 6, Totaldemlist[i*2], total_money_style)
+        dsummary.write(i*17+i+17, 5, Total[i*2], total_money_style)
+      if rate[i*2+1] == 'AR_PT1':
+        dsummary.add_table(i*17+i+1,9, i*17+i+17, 13,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+        dsummary.write(i*17+i+1, 9, 'Account ID:', header_style)
+        dsummary.write(i*17+i+2, 9, 'Rate Schedule:', header_style)
+        dsummary.write(i*17+i+3, 9, 'Account Name:', header_style)
+        dsummary.write(i*17+i+1, 10, caccount[i*2+1], merge_style)
+        dsummary.write(i*17+i+1, 11, '', merge_style)
+        dsummary.write(i*17+i+1, 12, '', merge_style)
+        dsummary.write(i*17+i+1, 13, '', merge_style)
+        dsummary.write(i*17+i+2, 10, rate[i*2+1], merge_style)
+        dsummary.write(i*17+i+2, 11, '', merge_style)
+        dsummary.write(i*17+i+2, 12, '', merge_style)
+        dsummary.write(i*17+i+2, 13, '', merge_style)
+        dsummary.write(i*17+i+3, 10, name[i*2+1], merge_style)
+        dsummary.write(i*17+i+3, 11, '', merge_style)
+        dsummary.write(i*17+i+3, 12, '', merge_style)
+        dsummary.write(i*17+i+3, 13, '', merge_style)
+        for j in range(12):
+          dsummary.write(i*17+i+j+5,9,month[j],title_style)
+          dsummary.write(i*17+i+j+5,10,kW[i*2+1][j],num_style)
+          dsummary.write(i*17+i+j+5,11,excesskW[i*2+1][j],num_style)
+          dsummary.write(i*17+i+j+5,12,Monthlytotallist[i*2+1][j],money_style)
+          dsummary.write(i*17+i+j+5,13,Monthlydemlist[i*2+1][j],money_style)
+        for j in range(4):
+          dsummary.write(i*17+i+4, j+10, PT_titles[j], title_style)
+        dsummary.write(i*17+i+17, 11, 'Total', total_style)
+        dsummary.write(i*17+i+17, 13, Totaldemlist[i*2+1], total_money_style)
+        dsummary.write(i*17+i+17, 12, Total[i*2+1], total_money_style)
+      else:
+        dsummary.add_table(i*17+i+1,9, i*17+i+17, 12,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+        dsummary.write(i*17+i+1, 9, 'Account ID:', header_style)
+        dsummary.write(i*17+i+2, 9, 'Rate Schedule:', header_style)
+        dsummary.write(i*17+i+3, 9, 'Account Name:', header_style)
+        dsummary.write(i*17+i+1, 10, caccount[i*2+1], merge_style)
+        dsummary.write(i*17+i+1, 11, '', merge_style)
+        dsummary.write(i*17+i+1, 12, '', merge_style)
+        dsummary.write(i*17+i+2, 10, rate[i*2+1], merge_style)
+        dsummary.write(i*17+i+2, 11, '', merge_style)
+        dsummary.write(i*17+i+2, 12, '', merge_style)
+        dsummary.write(i*17+i+3, 10, name[i*2+1], merge_style)
+        dsummary.write(i*17+i+3, 11, '', merge_style)
+        dsummary.write(i*17+i+3, 12, '', merge_style)
+        for j in range(12):
+          dsummary.write(i*17+i+j+5,9,month[j],title_style)
+          dsummary.write(i*17+i+j+5,10,kW[i*2+1][j],num_style)
+          dsummary.write(i*17+i+j+5,11,Monthlytotallist[i*2+1][j],money_style)
+          dsummary.write(i*17+i+j+5,12,Monthlydemlist[i*2+1][j],money_style)
+        for j in range(3):
+          dsummary.write(i*17+i+4, j+10, SG_titles[j], title_style)
+        dsummary.write(i*17+i+17, 10, 'Total', total_style)
+        dsummary.write(i*17+i+17, 12, Totaldemlist[i*2+1], total_money_style)
+        dsummary.write(i*17+i+17, 11, Total[i*2+1], total_money_style)
+      additional = i+1 #counter to make final table
+    if rate [additional*2] == 'AR_PT1': #making the final table (i changed to additional)
+      dsummary.add_table(additional*17+additional+1,3, additional*17+additional+17, 7,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+      dsummary.write(additional*17+additional+1, 3, 'Account ID:', header_style)
+      dsummary.write(additional*17+additional+2, 3, 'Rate Schedule:', header_style)
+      dsummary.write(additional*17+additional+3, 3, 'Account Name:', header_style)
+      dsummary.write(additional*17+additional+1, 4, caccount[additional*2], merge_style)
+      dsummary.write(additional*17+additional+1, 5, '', merge_style)
+      dsummary.write(additional*17+additional+1, 6, '', merge_style)
+      dsummary.write(additional*17+additional+1, 7, '', merge_style)
+      dsummary.write(additional*17+additional+2, 4, rate[additional*2], merge_style)
+      dsummary.write(additional*17+additional+2, 5, '', merge_style)
+      dsummary.write(additional*17+additional+2, 6, '', merge_style)
+      dsummary.write(additional*17+additional+2, 7, '', merge_style)
+      dsummary.write(additional*17+additional+3, 4, name[additional*2], merge_style)
+      dsummary.write(additional*17+additional+3, 5, '', merge_style)
+      dsummary.write(additional*17+additional+3, 6, '', merge_style)
+      dsummary.write(additional*17+additional+3, 7, '', merge_style)
+      for j in range(12):
+          dsummary.write(additional*17+additional+j+5,3,month[j],title_style)
+          dsummary.write(additional*17+additional+j+5,4,kW[additional*2][j],num_style)
+          dsummary.write(additional*17+additional+j+5,5,excesskW[additional*2][j],num_style)
+          dsummary.write(additional*17+additional+j+5,6,Monthlytotallist[additional*2][j],money_style)
+          dsummary.write(additional*17+additional+j+5,7,Monthlydemlist[additional*2][j],money_style)
+      for j in range(4):
+          dsummary.write(additional*17+additional+4, j+4, PT_titles[j], title_style)
+      dsummary.write(additional*17+additional+17, 5, 'Total', total_style)
+      dsummary.write(additional*17+additional+17, 7, Totaldemlist[additional*2], total_money_style)
+      dsummary.write(additional*17+additional+17, 6, Total[additional*2], total_money_style)
+    else:
+      dsummary.add_table(additional*17+additional+1,3, additional*17+additional+17, 6,{'header_row':False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+      dsummary.write(additional*17+additional+1, 3, 'Account ID:', header_style)
+      dsummary.write(additional*17+additional+2, 3, 'Rate Schedule:', header_style)
+      dsummary.write(additional*17+additional+3, 3, 'Account Name:', header_style)
+      dsummary.write(additional*17+additional+1, 4, caccount[additional*2], merge_style)
+      dsummary.write(additional*17+additional+1, 5, '', merge_style)
+      dsummary.write(additional*17+additional+1, 6, '', merge_style)
+      dsummary.write(additional*17+additional+2, 4, rate[additional*2], merge_style)
+      dsummary.write(additional*17+additional+2, 5, '', merge_style)
+      dsummary.write(additional*17+additional+2, 6, '', merge_style)
+      dsummary.write(additional*17+additional+3, 4, name[additional*2], merge_style)
+      dsummary.write(additional*17+additional+3, 5, '', merge_style)
+      dsummary.write(additional*17+additional+3, 6, '', merge_style)
+      for j in range(12):
+          dsummary.write(additional*17+additional+j+5,3,month[j],title_style)
+          dsummary.write(additional*17+additional+j+5,4,kW[additional*2][j],num_style)
+          dsummary.write(additional*17+additional+j+5,5,Monthlytotallist[additional*2][j],money_style)
+          dsummary.write(additional*17+additional+j+5,6,Monthlydemlist[additional*2][j],money_style)
+      for j in range(3):
+          dsummary.write(additional*17+additional+4, j+4, SG_titles[j], title_style)
+      dsummary.write(additional*17+additional+17, 4, 'Total', total_style)
+      dsummary.write(additional*17+additional+17, 6, Totaldemlist[additional*2], total_money_style)
+      dsummary.write(additional*17+additional+17, 5, Total[additional*2], total_money_style)
+      #************************************************************************************************************************************************************
+#//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#------------------------------------Demand Analysis Table--------------------------------
+#create a worksheet in the workbook titled Demand Analysis Table
+datable = wb.add_worksheet('Demand Analysis Table')
+
+#Figures out the location for the table based on how many sites there are
+loc = 'A1:F' + str(len(name)+1)
+
+#creates the table on the demand analysis page
+datable.add_table(loc, {'header_row': False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+
+#write the headers to the table
+datable.write(0,0,'Account Name',style5)
+datable.write(0,1,'Account ID',style5)
+datable.write(0,2,'Rate Schedule',style5)
+datable.write(0,3,'Monthly Demand (kW)',style5)
+datable.write(0,4,'Annual Costs ($)',style5)
+datable.write(0,5,'Annual Demand Costs ($)',style5)
+
+#set the column widths for the table
+datable.set_column('A:B',12.5)
+datable.set_column('C:C',10.5)
+datable.set_column('D:D',17.75)
+datable.set_column('E:E',12)
+datable.set_column('F:F', 15)
+
+#write the data to the table
+for i in range(len(name)):
+  datable.write(i+1,0,name[i],style13)
+  datable.write(i+1,1,caccount[i],style9)
+  datable.write(i+1,2,rate[i],style9)
+  datable.write(i+1,3,'Refer to Appendix_: Table_', style13)
+  datable.write(i+1,4,Total[i],style7)
+  datable.write(i+1,5,Totaldemlist[i],style7)
+
+#-------------------------------------SSA Table Sheet-----------------------------------
+#create a worksheet in the workbook titled SSA Table
+ssa = wb.add_worksheet('SSA Table')
+
+offset = round(SG_AE*.75,-3) #75% of Annual Energy rounded to nearest thousandth
+
+#create the SSA table
+ssa.add_table('A1:G22', {'header_row': False, 'autofilter': False, 'style': 'Table Style Medium 1'})
+
+#write the headers to the table
+ssa.write(0,0,'Year',style5)
+ssa.write(0,1,'Energy Purchased from SSA',style5)
+ssa.write(0,2,'SSA Rate',style5)
+ssa.write(0,3,'Entergy SGS Consumption Rate',style5)
+ssa.write(0,4,'Cost of Energy from SSA',style5)
+ssa.write(0,5,'Avoided Cost from Entergy',style5)
+ssa.write(0,6,'Savings',style5)
+
+#set the column widths for the table
+ssa.set_column('A:A', 12)
+ssa.set_column('B:F', 18)
+ssa.set_column('G:G', 15)
+
+Tot_sav = 0
+
+#write the data into the table
+for i in range(1,21):
+  ssa.write(i,0,i,style13)
+  ssa.write(i,1,offset,style6)
+  ssa.write(i,2,.0650,style8)
+  ssa.write(i,3,SG_Tot_Cons_dpkWh,style8)
+  ssa.write(i,4,offset*.065,style7)
+  ssa.write(i,5,offset*SG_Tot_Cons_dpkWh,style7)
+  sav = (offset*SG_Tot_Cons_dpkWh)-(offset*.065)
+  ssa.write(i,6,sav,style7)
+  offset = offset - offset*.005
+  SG_Tot_Cons_dpkWh = SG_Tot_Cons_dpkWh + SG_Tot_Cons_dpkWh*.02
+  Tot_sav += sav
+
+#write the total into the table
+ssa.write(21,5,'Total',style10)
+ssa.write(21,6,Tot_sav,style12)
+
+#write the assumptions below the table
+ssa.write(22,0,'Assumptions:',style11)
+ssa.write(23,1,'Solar PV Degredation = 0.5%', style11)
+ssa.write(24,1,'SSA Rate Escalation = 0%', style11)
+ssa.write(25,1,'Entergy SG Service Growth Rate = 2.0%', style11)
+
+#close the workbook
+wb.close() 
