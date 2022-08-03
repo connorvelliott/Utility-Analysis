@@ -1,0 +1,258 @@
+'''This code reads in the original PDFs in order to extract data. 
+Input all 12 months for one site as a single PDF (one PDF per site) (ordered Jan to Dec).
+Make sure that only the first page of the invoice, if there are multiple,
+is in the PDF for that month. DOUBLE CHECK EVERYTHING WAS EXTRACTED AND LOOKS RIGHT'''
+
+from tika import parser
+
+#----------------------Reads the PDF and Splits it into Pages-------------------------------
+def get_text_pages(file_name): #this function was originally obtained from stack overflow
+  raw_xml = parser.from_file(file_name, xmlContent=True)
+  body = raw_xml['content'].split('<body>')[1].split('</body>')[0]
+  body_without_tag = body.replace("<p>", "").replace("</p>", "").replace("<div>", "").replace("</div>","").replace("<p />","")
+  text_pages = body_without_tag.split("""<div class="page">""")[1:]
+  num_pages = len(text_pages)
+  if num_pages==int(raw_xml['metadata']['xmpTPg:NPages']) : #check if it worked correctly
+    return text_pages
+  else:
+    return 'Could not retrieve pdf data'
+
+#takes input data that cannot be extracted
+project = input('Please input the name of this Project: ')
+date = input("\nPlease input today's Date: ")
+while 1:
+  #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  utility = input('\nPlease input which Utility Company you are analyzing, case sensitive, (Entergy): ')
+  if utility == 'Entergy':
+    break
+  else:
+    print('\nYou did not enter a valid Utility Company. The current option is Entergy. Please ensure you spelled the company correctly and capatilized their name.')
+  #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+while 1:
+  try:
+    site_amount = int(input('\nPlease input the amount of sites you are analyzing: '))
+    break
+  except:
+    print('\nYou did not enter an integer.')
+
+#initialize lists
+kWh = []
+kW = []
+echarge = []
+dcharge = []
+MBill = []
+caccount = []
+rate = []
+amcharge = []
+namelist = []
+excesskW = []
+excessdcharge = []
+offkWh = []
+offecharge = []
+
+#---------------------Reading the PDF-----------------------------
+for i in range(site_amount): #iterates through each site
+  name = input('\nPlease input the name of site ' + str(i+1) + ' : ') #asks to input site name
+  namelist.append(name)
+  file_name = input('Please input the file name for this PFD (example.pdf): ') #asks to input PDF file name
+  while 1: #infinite loop
+    try:
+      text_pages = get_text_pages(file_name) #checks if file name was input correctly
+      break #breaks out of infinite loop if so
+    except:
+      file_name = input('\nYou input an invalid file name. Please double check and re-enter the file name for this site (example.pdf): ') #asks again if not
+  kWh.append([]) #appends the list of lists for this site
+  kW.append([])
+  echarge.append([])
+  dcharge.append([])
+  MBill.append([])
+  amcharge.append([])
+  excesskW.append([])
+  offkWh.append([])
+  excessdcharge.append([])
+  offecharge.append([])
+  page = 0
+  ratelen = len(rate) #used to check if we found the rate for this site later
+  caccountlen = len(caccount)
+  for j in range(len(text_pages)): #runs through each page
+    page += 1
+    text = text_pages[j].strip().split('\n') #removes tagged on items in this list
+    kWhlen = len(kWh[i])
+    kWlen = len(kW[i])
+    eclen = len(echarge[i])
+    dclen = len(dcharge[i])
+    amclen = len(amcharge[i])
+    excessdclen = len(excessdcharge[i])
+    excesskWlen = len(excesskW[i])
+    offeclen = len(offecharge[i])
+    offkWhlen = len(offkWh[i])
+    for k in range(len(text)): #runs through every word on this page
+      #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      if utility == 'Entergy':
+        if page == 1:
+          iter = 0
+          while 1: #infinite loop so that we get both the account number and rate before continuing
+            if 'Account #' in text[iter]:
+              vals = text[iter].split(' ')
+              caccount.append(vals[-1].split())
+            if 'Rate :' in text[iter]:
+              vals = text[iter].split(' ')
+              rate.append(vals[-1].split())
+            if len(caccount) > caccountlen and len(rate) > ratelen:
+              break
+            iter += 1
+            if iter == 10000 and len(caccount) < caccountlen and len(rate) < ratelen: #assumes after 10000 items it could not be found
+              rate.append(input("This site's rate could not be found. Please enter it: "))
+              caccount.append(input("This site's Account Number could not be found. Please enter it: "))
+              break
+            elif len(caccount) > caccountlen and iter == 10000: 
+              rate.append(input("This site's rate could not be found. Please enter it: "))
+              break
+            elif len(rate) > ratelen and iter == 10000:
+              caccount.append(input("This site's Account Number could not be found. Please enter it: "))
+              break
+        #************************************************************************************************************************************************************
+        if rate[i][0] == 'AR_PT1':
+          MBill[i] = ['N','N','N','N','N','N','N','N','N','N','N','N'] #assumes no minimum bill under AR_PT1 rate schedule
+          if 'Onpeak Demand Charge' in text[k]: #if these words are in the text
+            vals = text[k].split(' ')
+            try:
+              kW[i].append(float(vals[3].strip())) #try to make it a float (we found the value if we can)
+              kW[i][j] = str(kW[i][j]) #switch it back to a string
+              dcharge[i].append(float(vals[-1].replace(',','').strip()))
+              dcharge[i][j] = str(dcharge[i][j])
+            except: #did not find it. move to the next one and the code will print out we missed this month later
+              pass
+          if 'Excess Demand Charge' in text[k]:
+            vals = text[k].split(' ')
+            try:
+              excesskW[i].append(float(vals[3].strip()))
+              excesskW[i][j] = str(excesskW[i][j])
+              excessdcharge[i].append(float(vals[-1].replace(',','').strip()))
+              excessdcharge[i][j] = str(excessdcharge[i][j])
+            except:
+              pass
+          if 'Onpeak Energy Charge' in text[k]:
+            vals = text[k].split(' ')
+            try:
+              kWh[i].append(float(vals[3].strip()))
+              kWh[i][j] = str(kWh[i][j])
+              echarge[i].append(float(vals[-1].replace(',','').strip()))
+              echarge[i][j] = str(echarge[i][j])
+            except:
+              pass
+          if 'Offpeak Energy Charge' in text[k]:
+            vals = text[k].split(' ')
+            try:
+              offkWh[i].append(float(vals[3].strip()))
+              offkWh[i][j] = str(offkWh[i][j])
+              offecharge[i].append(float(vals[-1].replace(',','').strip()))
+              offecharge[i][j] = str(offecharge[i][j])
+            except:
+              pass
+        #************************************************************************************************************************************************************
+        else: #non PT_1 rate schedule
+          if 'kWh Metered' in text[k]:
+            vals = text[k].split(' ')
+            try:
+              kWh[i].append(float(vals[-1].strip()))
+              kWh[i][j] = str(kWh[i][j])
+            except:
+              pass
+          if 'kW Metered' in text[k]:
+            vals = text[k].split(' ')
+            try:
+              kW[i].append(float(vals[-1].strip()))
+              kW[i][j] = str(kW[i][j])
+            except:
+              pass
+          if 'Energy Charge' in text[k]:
+            vals = text[k].split(' ')
+            try:
+              echarge[i].append(float(vals[-1].replace(',','').strip()))
+              echarge[i][j] = str(echarge[i][j])
+            except:
+              pass
+          if 'Demand Charge' in text[k]:
+            vals = text[k].split(' ')
+            try:
+              dcharge[i].append(float(vals[-1].replace(',','').strip()))
+              dcharge[i][j] = str(dcharge[i][j])
+              MBill[i].append('N')
+            except:
+              pass
+          elif 'Minimum Bill Charge' in text[k]:
+            vals = text[k].split(' ')
+            try:
+              dcharge[i].append(float(vals[-1].replace(',','').strip()))
+              dcharge[i][j] = str(dcharge[i][j])
+              MBill[i].append('Y')
+            except:
+              pass
+        if 'Current Month Energy Charges' in text[k]:
+          vals = text[k].split()
+          try:
+            amcharge[i].append(float(vals[-1].replace(',','').replace('$','').strip()))
+            amcharge[i][j] = str(amcharge[i][j])
+          except:
+            pass
+      #//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      
+    #************************************************************************************************************************************************************
+    if rate[i][0] == 'AR_PT1':
+      if len(excessdcharge[i]) == excessdclen: #if there was not an excess kW this month append 0 for both
+        excessdcharge[i].append('0')
+      if len(excesskW[i]) == excesskWlen:
+        excesskW[i].append('0')
+      if len(offecharge[i]) == offeclen:
+        offecharge[i].append('NA')
+      if len(offkWh[i]) == offkWhlen:
+        offkWh[i].append('NA')
+    #************************************************************************************************************************************************************
+
+      #prints out that the reader missed information
+    if len(kWh[i]) == kWhlen:
+      print('\nkWh could not be found in file ' + file_name + ' on page', page)
+      kWh[i].append('NA')
+    if len(kW[i]) == kWlen:
+      print('\nkW could not be found in file ' + file_name + ' on page', page)
+      kW[i].append('NA')
+    if len(echarge[i]) == eclen:
+      print('\nEnergy Charge could not be found in file ' + file_name + ' on page', page)
+      echarge[i].append('NA')
+    if len(dcharge[i]) == dclen:
+      print('\nNeither a Demand Charge or Minimum Bill Charge could be found in file ' + file_name + ' on page', page)
+      print('Therefore, whether or not this month was a Minimum Bill was also not added.')
+      dcharge[i].append('NA')
+    if len(amcharge[i]) == amclen:
+      print('\nTotal Monthly Charge could not be found in file ' + file_name + ' on page', page)
+      amcharge[i].append('NA')
+    if len(rate) == ratelen:
+      print('\nRate Schedule could not be found for site ' + name)
+      rate[i].append('NA')
+    if len(caccount) == caccountlen:
+      print('\nAccount Number could not be found for site ' + name)
+      caccount[i].append('NA')
+
+#-------------------------Writing the Text File--------------------------------
+with open('UtilityFile.txt', 'w') as f:
+  f.write('Project: ' + project)
+  f.write('\nDate: ' + date)
+  f.write('\nUtility: ' + utility)
+  f.write('\n\n')
+  for i in range(int(site_amount)):
+    f.write('\nName: ' + namelist[i])
+    f.write('\nContract Account: ' + caccount[i][0])
+    f.write('\nRate: ' + rate[i][0])
+    f.write('\nkWh: ' + ','.join(kWh[i])) #.join will take the strings in the list and combine them with commas
+    f.write('\nkW: ' + ','.join(kW[i]))
+    f.write('\nEnergy Charge: ' + ','.join(echarge[i]))
+    f.write('\nDemand Charge: ' + ','.join(dcharge[i]))
+    if rate[i][0] == 'AR_PT1':
+      f.write('\noffkWh: ' + ','.join(offkWh[i]))
+      f.write('\nexcesskW: ' + ','.join(excesskW[i]))
+      f.write('\noffecharge: ' + ','.join(offecharge[i]))
+      f.write('\nexcessdcharge: ' + ','.join(excessdcharge[i]))
+    f.write('\nMonthly Charge: ' + ','.join(amcharge[i]))
+    f.write('\nMBill: ' + ','.join(MBill[i]))
+    f.write('\n\n')
